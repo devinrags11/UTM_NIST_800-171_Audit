@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extensionAttribute>
+<displayName>Compliance - Failed Results Count</displayName>
+<displayInCategory>Extension Attributes</displayInCategory>
+<dataType>number</dataType>
+<description>Displays the number of compliance controls that failed.</description>
+<scriptContentsMac>#!/bin/bash
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+# Copyright (c) 2022 Jamf.  All rights reserved.
+#
+#       Redistribution and use in source and binary forms, with or without
+#       modification, are permitted provided that the following conditions are met:
+#               * Redistributions of source code must retain the above copyright
+#                 notice, this list of conditions and the following disclaimer.
+#               * Redistributions in binary form must reproduce the above copyright
+#                 notice, this list of conditions and the following disclaimer in the
+#                 documentation and/or other materials provided with the distribution.
+#               * Neither the name of the Jamf nor the names of its contributors may be
+#                 used to endorse or promote products derived from this software without
+#                 specific prior written permission.
+#
+#       THIS SOFTWARE IS PROVIDED BY JAMF SOFTWARE, LLC &quot;AS IS&quot; AND ANY
+#       EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#       WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#       DISCLAIMED. IN NO EVENT SHALL JAMF SOFTWARE, LLC BE LIABLE FOR ANY
+#       DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#       (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+#       LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+#       ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#       (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+#       SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+######
+# INSTRUCTIONS
+# This Jamf Extension Attribute is used in conjunction with the macOS Security Compliance project (mSCP)
+# https://github.com/usnistgov/macos_security
+#
+# Upload the following text into Jamf Pro Extension Attribute section.
+#
+# Used to gather the total number of failed results from the compliance audit.
+######
+
+audit=$(ls -l /Library/Preferences | /usr/bin/grep 'org.*.audit.plist' | /usr/bin/awk '{print $NF}')
+EXEMPT_RULES=()
+FAILED_RULES=()
+
+if [[ ! -z &quot;$audit&quot; ]]; then
+
+    count=$(echo &quot;$audit&quot; | /usr/bin/wc -l | /usr/bin/xargs)
+    if [[ &quot;$count&quot; == 1 ]]; then
+    
+        # Get the Exemptions
+        exemptfile=&quot;/Library/Managed Preferences/${audit}&quot;
+        if [[ ! -e &quot;$exemptfile&quot; ]];then
+            exemptfile=&quot;/Library/Preferences/${audit}&quot;
+        fi
+
+        rules=($(/usr/libexec/PlistBuddy -c &quot;print :&quot; &quot;${exemptfile}&quot; | /usr/bin/awk '/Dict/ { print $1 }'))
+        
+        for rule in ${rules[*]}; do
+            if [[ $rule == &quot;Dict&quot; ]]; then
+                continue
+            fi
+            EXEMPTIONS=$(/usr/libexec/PlistBuddy -c &quot;print :$rule:exempt&quot; &quot;${exemptfile}&quot; 2&gt;/dev/null)
+            if [[ &quot;$EXEMPTIONS&quot; == &quot;true&quot; ]]; then
+                EXEMPT_RULES+=($rule)
+            fi
+        done
+        
+        unset $rules
+
+        # Get the Findings
+        auditfile=&quot;/Library/Preferences/${audit}&quot;
+        rules=($(/usr/libexec/PlistBuddy -c &quot;print :&quot; &quot;${auditfile}&quot; | /usr/bin/awk '/Dict/ { print $1 }'))
+        
+        for rule in ${rules[*]}; do
+            if [[ $rule == &quot;Dict&quot; ]]; then
+                continue
+            fi
+            FINDING=$(/usr/libexec/PlistBuddy -c &quot;print :$rule:finding&quot; &quot;${auditfile}&quot;)
+            if [[ &quot;$FINDING&quot; == &quot;true&quot; ]]; then
+                FAILED_RULES+=($rule)
+            fi
+        done
+        # count items only in Findings
+        count=0
+        for finding in ${FAILED_RULES[@]}; do
+            if [[ ! &quot; ${EXEMPT_RULES[*]} &quot; =~ &quot; ${finding} &quot; ]] ;then
+                ((count=count+1))
+            fi
+        done
+    else
+        count=&quot;-2&quot;
+    fi
+else
+    count=&quot;-1&quot;
+fi
+
+/bin/echo &quot;&lt;result&gt;${count}&lt;/result&gt;&quot;
+</scriptContentsMac>
+</extensionAttribute>

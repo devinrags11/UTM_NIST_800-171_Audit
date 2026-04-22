@@ -1,0 +1,1 @@
+sudo ./800-171_compliance.sh
